@@ -4,7 +4,8 @@ class Invoice extends MY_Controller {
 
     function __construct()
     {
-        parent::__construct();      
+        parent::__construct();   
+        $this->load->library('session');   
         $this->load->model('Invoice_model');
         $this->load->model('Invoice_log_model');
         $this->load->model('Company_model');                
@@ -36,8 +37,11 @@ class Invoice extends MY_Controller {
         $this->load->library('PaymentGateway');
         $this->load->library('Forecast_charges');
         $this->load->library('Tokenex');
+          // $this->load->library('phpqrcode/qrlib');
+        include_once APPPATH . 'libraries/phpqrcode/qrlib.php';
         $global_data['menu_on'] = true;
-        $this->load->vars($global_data);        
+        $this->load->vars($global_data);    
+     
         
         $language = $this->session->userdata('language');
         $this->lang->load('booking', $language);
@@ -48,6 +52,7 @@ class Invoice extends MY_Controller {
         if(is_numeric($invoice_number)) {
             $booking_id = $this->Invoice_model->get_booking_id_by_invoice_number($invoice_number, $this->company_id);
             $this->show_invoice($booking_id);
+           
         }
     }
 
@@ -67,6 +72,9 @@ class Invoice extends MY_Controller {
 
         // used for mouse-hover delete buttons
         $this->show_invoice($booking_id, false, false, true);
+        
+       
+      
     }
 
     function show_master_invoice_read_only($hash = "")
@@ -128,6 +136,20 @@ class Invoice extends MY_Controller {
 
     function show_invoice($booking_id, $folio_id = false, $customer_id = false, $read_only = false)
     {
+        $this->session->set_userdata('booking_id', $booking_id);
+
+        $irn = $this->get_irn();
+     
+        $qr_image_url = $this->generate_qr();
+
+
+        // Create an array to pass data to the view
+        $data = array(
+            'irn' => $irn,
+            'qr_image_url' => $qr_image_url 
+        );
+       
+     
         // if user is viewing the invoice through Hash,
         // then don't check if the booking belongs to the company
         if (isset($this->user_id))
@@ -138,11 +160,15 @@ class Invoice extends MY_Controller {
 
         $data['company']        = ($company_id == $this->company_id && $this->company_data) ? $this->company_data : $this->Company_model->get_company($company_id);
 
+
+
         $this->company_date_format = $data['company']['date_format'];
+        // $this->send_einvoice_request($booking_id);
 
         $booking_room_history   = $this->Booking_room_history_model->get_booking_detail($booking_id);
         $data['room_detail']    = $this->Room_model->get_room($booking_room_history['room_id'], $booking_room_history['room_type_id']);
         $data['customer_id']    = $customer_id;
+     
 
         //$data['currency_symbol'] = $this->session->userdata('currency_symbol');
         //if (!$data['currency_symbol']) {
@@ -158,9 +184,17 @@ class Invoice extends MY_Controller {
         }
         $booking_customer_id_info = $this->Customer_model->get_customer_info($data['booking_detail']['booking_customer_id']);
         $data['customers'] = array_merge(array($booking_customer_id_info), $staying_customers);
+      
+       $this->session->set_userdata('customersinvoice', $data['customers']);
+      
+        // echo"<pre>";
+        // print_r($data['customers']);
+        // echo"</pre>";
+        
 
         if ($customer_id) // if invoice is billed to everyone
         {
+           
             $data['booking_customer'] = $this->Customer_model->get_customer_info($customer_id);
         }
         else
@@ -172,6 +206,7 @@ class Invoice extends MY_Controller {
                 $data['booking_customer']['customer_name'] = $booking_customer['customer_name'].", ".implode(", ", $staying_customer_names);
             }
 
+         
             // $customer_id = $data['booking_detail']['booking_customer_id'];
         }
         /*Get data from card table*/
@@ -223,6 +258,8 @@ class Invoice extends MY_Controller {
         //Get charges and payments sorted based on its selling dates
         $data['charge_types']  = $this->Charge_type_model->get_charge_types($this->company_id);
         $data['payment_types'] = $this->Payment_model->get_payment_types($this->company_id);
+
+        
         
         $payment_gateway_credentials = $this->paymentgateway->getGatewayCredentials();
         $data['selected_payment_gateway'] = null;
@@ -241,6 +278,10 @@ class Invoice extends MY_Controller {
         $data['current_folio_id'] = $folio_id;
         
         $charges  = $this->Charge_model->get_charges($booking_id, $customer_id, $folio_id, $is_first_folio);
+
+        // echo '<pre>';
+        // print_r($charges);
+        // echo '</pre>';
 
         // and invoice currently viewing transactions for 'booking customer'
         if(!$data['company']['hide_forecast_charges'])
@@ -274,6 +315,14 @@ class Invoice extends MY_Controller {
         
         $data['charges']  = $charges;
         $payments = $this->Payment_model->get_payments($booking_id, $customer_id, $folio_id, $is_first_folio);
+        $payments = $this->Payment_model->get_payments($booking_id, $customer_id, $folio_id, $is_first_folio);
+
+        // echo '<pre>';
+        // print_r($data['charges']);
+        // echo '</pre>';
+
+        $this->session->set_userdata('items', $data['charges']);
+     
         if($payments){
             $total_amount = 0;
             foreach($payments as $index => $payment){
@@ -407,8 +456,15 @@ class Invoice extends MY_Controller {
             $this->load->library('PaymentGateway');
         }
         $data['selected_customer_id'] = $customer_id;
+        // $irn = $this->get_irn();
+        // $data = array(
+        //     'irn' => $irn
+        // );
+       
         $data['main_content'] = 'invoice/invoice';
+       
         $this->load->view('includes/bootstrapped_template', $data);
+      
     }
 
     function show_master_invoice($group_id, $booking_id = false, $customer_id = false, $read_only = false)
@@ -453,6 +509,8 @@ class Invoice extends MY_Controller {
             $customer_data = $this->Booking_model->get_all_group_booking_customers($group_id);
         }
 
+    
+
         $staying_customers = $this->Customer_model->get_staying_customers($all_booking_ids);
         if($customer_data)
             $data['customers'] = array_merge($customer_data, $staying_customers);
@@ -482,6 +540,9 @@ class Invoice extends MY_Controller {
             $booking_customer = $this->Customer_model->get_customer_info($data['booking_detail']['booking_customer_id']);
             $data['booking_customer'] = $booking_customer;
         }
+        $this->f($booking_customer);
+      
+
         /*Get data from card table*/
         if(isset($data['customers']) && $data['customers'])
         {
@@ -669,6 +730,7 @@ class Invoice extends MY_Controller {
         }
         $data['selected_customer_id'] = $customer_id;
         $data['main_content'] = 'invoice/master_invoice';
+      
         $this->load->view('includes/bootstrapped_template', $data);
     }
     
@@ -1506,12 +1568,438 @@ class Invoice extends MY_Controller {
         $invoice_log_data['new_amount'] =  -$payment['amount'];
         $invoice_log_data['log'] = 'Payment voided';
         $this->Invoice_log_model->insert_log($invoice_log_data);
-        
+      
         echo json_encode($void);   
     
     }
-   
+    
+
+    public function authenticate() {
+        try {
+            $companyId = $this->company_id; // Assuming this is set
+            
+            // Fetch credentials directly from the database
+            $this->db->where('companies_id', $companyId);
+            $query = $this->db->get('invoice_extension'); // Replace with your actual table name
+    
+            if ($query->num_rows() > 0) {
+                $credentials = $query->row_array(); // Get the row as an associative array
+            } else {
+                return ['error' => 'Credentials not found for the current company.'];
+            }
+    
+            // // Check if token exists and is not expired
+            // if (!empty($credentials['access_token'])) {
+            //     return $credentials['access_token'];
+            // }
+    
+            $email = $credentials['email'];
+            $url = $credentials['MASTERGST_SANDBOX_URL'];
+            // Prepare query parameters
+            $queryParams = ['email' => $email];
+            $url = 'https://api.mastergst.com/einvoice/authenticate?' . http_build_query($queryParams);
+            
+            // Set headers
+            $headers = [
+                'accept: */*',
+                'username: ' . $credentials['MASTERGST_USERNAME'],
+                'password: ' . $credentials['MASTERGST_PASSWORD'],
+                'ip_address: ' . $this->input->ip_address(),
+                'client_id: ' . $credentials['MASTERGST_CLIENT_ID'],
+                'client_secret: ' . $credentials['MASTERGST_CLIENT_SECRET'],
+                'gstin: ' . $credentials['MASTERGST_GSTN'],
+            ];
+    
+            // Initialize cURL request
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+            $response = curl_exec($ch);
+            curl_close($ch);
+    
+            $responseData = json_decode($response, true);
+    
+            // Check if AuthToken exists in the response
+            if (isset($responseData['data']['AuthToken'])) {
+                $accessToken = $responseData['data']['AuthToken'];
+    
+                // Store the access_token in the database
+                $this->db->where('companies_id', $companyId);
+                $this->db->update('invoice_extension', ['access_token' => $accessToken]);
+    
+                return $accessToken;
+            } else {
+                return ['error' => 'AuthToken missing in response'];
+            }
+        } catch (Exception $e) {
+            return ['error' => 'An error occurred during authentication', 'details' => $e->getMessage()];
+        }
+    }
+    
+    
+    
+
+
+    public function send_einvoice_request()
+    {
+    //    $this->authenticate();
+
+        $accessToken = $this->authenticate();
+
+        // print_r( $accessToken);
+
+        if (isset($accessToken['error'])) {
+            return $this->output
+                        ->set_content_type('application/json')
+                        ->set_output(json_encode($accessToken)); // Return the error from authenticate
+        }
+
+        $booking_id = $this->session->userdata('booking_id');
+       
+        $customer = $this->session->userdata('customersinvoice');
+        $items = $this->session->userdata('items');
+        $items_list = [];
+
+
+
+        if (!empty($items)) {
+            foreach ($items as $index => $item) { // Use $index for serial number
+                // Debugging: Check what $item contains
+                // echo '<pre>';
+                // print_r($item);  // Print the current item
+                // echo '</pre>';
+        
+                // Ensure keys exist before accessing them
+                $item_name = isset($item['name']) ? $item['name'] : 'Unknown';
+                $item_rate = isset($item['rate']) ? $item['rate'] : 0;
+                $item_amount = isset($item['amount']) ? $item['amount'] : 0;
+        
+                // Create item data array
+                $item_data = [
+                    "SlNo" => (string)($index + 1),  // Serial number (1-based index)
+                    "IsServc" => "N",  // Assuming the item is not a service; change if necessary
+                    "PrdDesc" => $item_name,  // Product/Service description
+                    "HsnCd" => "1001",  // HSN code; update based on your data
+                    "Barcde" => "123456",  // Barcode, if available
+                    "Qty" => 1,  // Quantity; set dynamically based on your data
+                    "Unit" => "NOS",  // Unit of measurement (e.g., NOS, KG, etc.)
+                    "UnitPrice" => $item_rate,  // Price per unit
+                    "TotAmt" => $item_amount,  // Total amount (rate * quantity)
+                    "Discount" => 0,  // Discount if any, set dynamically
+                    "PreTaxVal" => $item_amount,  // Pretax value (same as total amount if no discount)
+                    "AssAmt" => $item_amount,  // Assessable value
+                    "GstRt" => 18,  // GST rate; set as per your requirements
+                    "SgstAmt" => 0,  // SGST amount (for interstate transaction, set to 0)
+                    "IgstAmt" => $item_amount * 0.18,  // IGST amount (for interstate transaction)
+                    "CgstAmt" => 0,  // CGST amount (set to 0 for interstate)
+                    "TotItemVal" => $item_amount + ($item_amount * 0.18),  // Total item value (including tax)
+                    "AttribDtls" => [
+                        [
+                            "Nm" => $item_name,  // Attribute name (same as product name in this case)
+                            "Val" => (string)$item_amount  // Attribute value
+                        ]
+                    ]
+                ];
+        
+                // Add the item data to the items list
+                $items_list[] = $item_data;
+            }
+        } else {
+            echo "No items found in the session.";
+        }
+    
+
+        // Buyer Details
+
+        if (!empty($customer) && isset($customer[0])) {
+            $customer = $customer[0]; // Access the first customer
+        
+            // Now you can access the customer details
+            $customer_name = $customer['customer_name']; // Get the customer name
+            $customer_id = $customer['customer_id']; // Get the customer ID
+            $customer_company_name = $customer['company_name']; // Get the customer ID
+            $customer_address1 = $customer['address']; // Get the customer ID
+            $customer_address2 = $customer['address2']; // Get the customer ID
+            $customer_city = $customer['city']; // Get the customer ID
+            $customer_phone = $customer['phone']; // Get the customer ID
+            $customer_fax = $customer['fax']; // Get the customer ID
+            $customer_email = $customer['email']; // Get the customer ID
+            $customer_pin = $customer['postal_code']; // Get the customer ID
+         
+        } else {
+            // Handle the case where no customers are found
+            $customer_name = ''; // Default value if no customer is found
+            $customer_id = null; // Default value for ID
+        }
+        $invoice_number =  $this->Invoice_model->get_invoice_number($booking_id);
+
+        // Fetch the access token from the database
+        $companyId = $this->company_id; // Assuming this is set
+        $this->db->where('companies_id', $companyId);
+        $query = $this->db->get('invoice_extension'); // Replace with your actual table name
+    
+        if ($query->num_rows() > 0) {
+            $credentials = $query->row_array();
+            // $accessToken = $credentials['access_token'];
+            $accessToken = $credentials['access_token'];
+             // Assuming you stored the access token
+            $email = $credentials['email'];
+            $seller_gstn = $credentials['MASTERGST_GSTN'];
+        } else {
+            return $this->output
+                        ->set_content_type('application/json')
+                        ->set_output(json_encode(['error' => 'Credentials not found for the current company.']));
+        }
+    
+        // The API URL with your query parameters
+        // $url = 'https://api.mastergst.com/einvoice/type/GENERATE/version/V1_03?email=' . urlencode($email);
+        $url = 'https://api.mastergst.com/einvoice/type/GENERATE/version/V1_03?email=deepak@mycloudhospitality.com';
+        $invoice_number =  $this->Invoice_model->get_invoice_number($booking_id);
+
+        // print_r($url);
+        // exit;
+
+        $company =  $this->Company_model->get_company($this->company_id);
+       
+
+          // Seller Details
+        $seller_name = $company['name'];
+        $seller_phone = $company['phone'];
+        $seller_address = $company['address'];
+        $seller_city = $company['city'];
+        $seller_region = $company['region'];
+        $seller_pin = $company['postal_code'];
+        $seller_email = $company['email'];
+        // print_r($invoice_number);
+        // exit;
+        // JSON payload you want to send
+        $payload = [
+            "Version" => "1.1",
+            "TranDtls" => [
+                "TaxSch" => "GST",
+                "SupTyp" => "B2B",
+                "RegRev" => "N",
+                "EcmGstin" => null,
+                "IgstOnIntra" => "N"
+            ],
+            "DocDtls" => [
+                "Typ" => "INV",
+                "No" => 'minical'.$invoice_number, // Add a comma here
+                "Dt" => date('d/m/Y')    // Replace semicolon with a comma or nothing if it's the last element
+           ],
+
+        
+
+            "SellerDtls" => [
+                "Gstin" =>  $seller_gstn,
+                "LglNm" =>  $seller_name,
+                "TrdNm" =>  $seller_name,
+                "Addr1" => $seller_address,
+                "Addr2" => $seller_address,
+                "Loc" => $seller_city,
+                "Pin" => $seller_pin,
+                "Stcd" => "29",
+                "Ph" =>  $seller_phone,
+                "Em" => $seller_email,
+            ],
+            "BuyerDtls" => [
+                "Gstin" => "29AWGPV7107B1Z1",
+                "LglNm" => $customer_company_name,
+                "TrdNm" => $customer_company_name,
+                "Pos" => "27",
+                "Addr1" =>  $customer_address1,
+                "Addr2" =>  $customer_address2,
+                "Loc" =>  $customer_city,
+                "Pin" => $customer_pin,
+                "Stcd" => "29",
+                "Ph" =>  $customer_phone,
+                "Em" => $customer_email
+            ],
+            "DispDtls" => [
+                "Nm" => $seller_name,
+                "Addr1" => $seller_address,
+                "Addr2"=>$seller_address,
+                "Loc" => $seller_city,
+                "Pin" =>  '518360',
+                "Stcd" => "37"
+            ],
+            "ShipDtls" => [
+                "Gstin" => "29AWGPV7107B1Z1",
+                "LglNm" => $customer_company_name,
+                "TrdNm" => $customer_company_name,
+                "Addr1" => $customer_address1,
+                "Addr2" => $customer_address2,
+                "Loc" =>  $customer_city,
+                "Pin" =>  '518360',
+                "Stcd" => "37"
+            ],
+          
+            "ItemList" => $items_list,  // The dynamically populated items list
+
+            "ValDtls" => [
+                "AssVal" => array_sum(array_column($items_list, 'AssAmt')),  // Total assessable value
+                "CgstVal" => 0,  // Total CGST (for interstate)
+                "SgstVal" => 0,  // Total SGST (for interstate)
+                "IgstVal" => array_sum(array_column($items_list, 'IgstAmt')),  // Total IGST
+                "Discount" => 0,  // Total discount
+                "OthChrg" => 0,  // Any other charges
+                "RndOffAmt" => 0,  // Rounding off
+                "TotInvVal" => array_sum(array_column($items_list, 'TotItemVal')),  // Total invoice value
+                "TotInvValFc" => array_sum(array_column($items_list, 'TotItemVal'))  // Total invoice value (foreign currency)
+            ],
+
+
+            ];
+            
+    
+        $payload_json = json_encode($payload); // Convert payload to JSON format
+
+       
+        // Set up cURL
+        $ch = curl_init($url);
+
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        $sample =
+        [
+            'Content-Type: application/json',
+            'accept: */*',
+            'ip_address: ' . $_SERVER['REMOTE_ADDR'], // You can customize this
+            'client_id: ' . $credentials['MASTERGST_CLIENT_ID'], // Ensure this is secure
+            'client_secret: ' . $credentials['MASTERGST_CLIENT_SECRET'], // Ensure this is secure
+            'username: ' . $credentials['MASTERGST_USERNAME'], // Ensure this is secure
+            'auth-token:'. $accessToken, // Use the access token from your database
+            'gstin: ' . $credentials['MASTERGST_GSTN'] // Use dynamic values as necessary
+        ];
+
+      
+     
+        curl_setopt($ch, CURLOPT_HTTPHEADER, 
+               $sample // Use dynamic values as necessary
+        );
+        
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $payload_json); 
+        curl_getinfo($ch); // Set the JSON payload
+
+         // Execute the request
+        $response = curl_exec($ch);
+
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        $responseData =  json_decode($response, true);
+       
+      
+    if ($httpCode == 200) {
+         
+        if (isset($responseData['data']['Irn']) && isset($responseData['data']['SignedQRCode'])) {
+            $this->session->set_userdata('einvoice', 'true');
+    
+            $irn = $responseData['data']['Irn'];
+            $qrCode = $responseData['data']['SignedQRCode'];
+            $AckNo = $responseData['data']['AckNo'];
+            $AckDt = $responseData['data']['AckDt'];
+    
+            // Save the IRN and QR code to the database
+            $data = [
+                'invoice_id' => $invoice_number,
+                'irn_number' => $irn,
+                'qrcode' => $qrCode,
+                'ack_no' => $AckNo,
+                'ack_date' => $AckDt,
+                'created_at' => date('Y-m-d H:i:s'),
+                'updated_at' => date('Y-m-d H:i:s'),
+            ];
+    
+            $this->db->insert('einvoice_irndetails', $data);
+    
+        }
+        
+        return $this->output
+        ->set_content_type('application/json')
+        ->set_output($response);
+    }else{
+        return $this->output
+        ->set_content_type('application/json')
+        ->set_output(json_encode(['error' => 'JSON encoding error', 'details' => json_last_error_msg()]));
+    }
 
     
-}
+      
+    }
 
+ function generate_qr() {
+        $booking_id = $this->session->userdata('booking_id');
+        $invoice_number = $this->Invoice_model->get_invoice_number($booking_id);
+        
+        // Load the database
+        $CI =& get_instance();
+        $CI->load->database();
+    
+        // Fetch the QR code token from the database using the invoice_id
+        $CI->db->select('qrcode');
+        $CI->db->from('einvoice_irndetails');
+        $CI->db->where('invoice_id', $invoice_number);
+        
+        $query = $CI->db->get();
+    
+        if ($query->num_rows() > 0) {
+            $result = $query->row(); // Fetch the first result row as an object
+            $token = $result->qrcode; // Access the qrcode field
+            
+            // Define the file path where to save the QR code image
+            $filePath = FCPATH . "images/qrcodes/qrcode_" . $invoice_number . ".png";
+            
+            // Generate QR code image
+            QRcode::png($token, $filePath, QR_ECLEVEL_L, 10); 
+
+            // Return the relative URL to the QR code image
+            $qr_image_url =  base_url()."images/qrcodes/qrcode_". $invoice_number . ".png";
+
+            // echo  $qr_image_url;
+          
+            return $qr_image_url;
+        } else {
+            return null; // Return null if no QR code is found
+        }
+    }
+    
+    
+    function get_irn() {
+        
+    $booking_id = $this->session->userdata('booking_id');
+    $invoice_number =  $this->Invoice_model->get_invoice_number($booking_id);
+
+    // print_r($invoice_number);
+   
+    // Load the database
+    $CI =& get_instance();
+    $CI->load->database();
+
+    // Fetch the qrcode token from the database using the invoice_id
+    $CI->db->select('irn_number');
+    $CI->db->from('einvoice_irndetails');
+  
+    $CI->db->where('invoice_id', $invoice_number);
+   
+    
+    $query = $CI->db->get();
+
+    if ($query->num_rows() > 0) {
+        $result = $query->row(); // Fetch the first result row as an object
+        $irn = $result->irn_number; // Access the irn_number field
+        return $irn; // Return the IRN number
+    } else {
+        return null; // Return null if no IRN number is found
+    }
+   
+}
+    
+
+  
+    
+}
+   
+
+ 
