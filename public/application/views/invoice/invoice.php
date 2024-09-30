@@ -263,13 +263,18 @@
             <div class="page-title-actions m-025">
                 <div>
                 <!-- This is your button with the correct data-url -->
+<<<<<<< HEAD
+                <button 
+                class="btn btn-primary m-1 <?php if ($generate_invoice_check == 1) echo 'hidden'; ?>" 
+=======
           <button 
 
           class="btn btn-primary m-1 <?php if ($generate_invoice_check == 1) echo 'hidden'; ?>" 
 
+>>>>>>> d3b96d8181c44dd1bfccf001ae6fc1208da3560e
                 id="print-Einvoice-button" 
                 data-url="<?php echo site_url('invoice/send_einvoice_request'); ?>" 
-                <?php echo $einvoice_enabled ? 'disabled' : ''; ?>>
+                >
                 <?php echo l('Generate') . ' ' . l('Einvoice'); ?>
          </button>
 
@@ -277,6 +282,7 @@
 
                 <?php echo l('print').' '.l('Einvoice'); ?>
             </button>
+
 
 
                     <button class="btn btn-primary m-1" id="print-invoice-button">
@@ -354,7 +360,15 @@ if(isset($this->is_nestpay_enabled) && $this->is_nestpay_enabled == true) {
         echo "<img src='" . $this->image_url . $company['company_id'] . "/" . $company_logos[0]['filename'] . "' id='company-logo-image'/><br/>";
     }
     ?>
-      
+       <div class="" style="float:right;">
+    <address class="text-gapp">
+        <?php if (isset($qr_image_url) && $qr_image_url): ?>
+            <img class="qr-print" src="<?= $qr_image_url ?>" alt="QR Code" />
+        <?php else: ?>
+            <span class="qr-print">No QR code found for this invoice.</span>
+        <?php endif; ?>
+    </address>
+</div>
 
     <div class="col-md-12 row invoice-header">
         <div class="col-xs-4 padding-left-zero padding-left-zero-wep">
