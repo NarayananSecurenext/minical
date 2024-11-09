@@ -23,7 +23,7 @@ class Option_model extends CI_Model {
 
     }
     
-    function get_option_by_company($option, $company_id){
+    function get_option_by_company($option, $company_id, $is_require = false){
 
         $this->db->select('*');
         $this->db->where('option_name', $option);
@@ -32,6 +32,11 @@ class Option_model extends CI_Model {
             $this->db->where_in('company_id', $company_id);
         } else {
             $this->db->where('company_id', $company_id);
+        }
+
+        if($is_require){
+            $where = "(JSON_EXTRACT(option_value, '$.security_status') = 1)";
+            $this->db->where($where);
         }
         $query = $this->db->get('options');
         if ($this->db->_error_message())
@@ -47,7 +52,11 @@ class Option_model extends CI_Model {
 
         $this->db->select('*');
         $this->db->where('option_name', $option);
-        $this->db->like('option_value', $user_id, 'both');
+        // $this->db->like('option_value', $user_id, 'both');
+
+        $where = "(JSON_EXTRACT(option_value, '$.user_id') = $user_id)";
+        $this->db->where($where);
+        
         $query = $this->db->get('options');
         if ($this->db->_error_message())
         {
@@ -124,6 +133,23 @@ class Option_model extends CI_Model {
         }else{
             return FALSE;
         }   
+    }
+
+    function get_data_by_json($option_name, $company_id)
+    {
+        $sql = "SELECT * FROM `options`
+                WHERE 
+                    option_name = 'loyalty_customer' AND
+                    company_id = '$company_id';
+                ";
+        
+        $query = $this->db->query($sql);
+        if($query->num_rows() >= 1)
+        {
+            return $query->result_array();
+        }
+        
+        return NULL;
     }
 }
 

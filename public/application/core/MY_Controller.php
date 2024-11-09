@@ -134,7 +134,11 @@ class MY_Controller extends CI_Controller {
         $this->review_management_settings = false;
         $this->is_cardknox_enabled = false;
         $this->is_nestpay_enabled = false;
+        $this->is_nestpaymkd_enabled = false;
         $this->is_oevai_enabled = false;
+        $this->is_housekeeper_manage_enabled = false;
+        $this->is_invoice_transfer_enabled = false;
+        $this->is_loyalty_program = false;
 
         if($get_active_modules){
             foreach ($get_active_modules as $key => $value) {
@@ -169,10 +173,21 @@ class MY_Controller extends CI_Controller {
                  if($value['extension_name'] == 'nestpay_integration'){
                      $this->is_nestpay_enabled = true;
                 }
+                if($value['extension_name'] == 'nestpaymkd_integration'){
+                     $this->is_nestpaymkd_enabled = true;
+                }
                 if($value['extension_name'] == 'oevai_integration'){
                     $this->is_oevai_enabled = true;
                 }
-
+                if($value['extension_name'] == 'housekeeper_management'){
+                    $this->is_housekeeper_manage_enabled = true;
+                }
+                if($value['extension_name'] == 'invoice_transfer'){
+                    $this->is_invoice_transfer_enabled = true;
+                }
+                if($value['extension_name'] == 'loyalty_program'){
+                    $this->is_loyalty_program = true;
+                }
 
                 $config = array();
                 $files_path = $modules_path . $value['extension_name'] . '/config/autoload.php';
@@ -286,8 +301,7 @@ class MY_Controller extends CI_Controller {
         if ($this->tank_auth->is_logged_in()) 
         {
             $user_restriction = $this->Option_model->get_option_by_user('login_security', $this->ci->session->userdata('user_id'));
-// prx($this->uri->segment(1));
-// prx($user_restriction);
+
             if($user_restriction){
                 $minical_access = json_decode($user_restriction[0]['option_value'], true);
 
